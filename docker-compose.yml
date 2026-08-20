@@ -1,0 +1,23 @@
+# Optional local PostgreSQL instance for testing the production database
+# path before deploying (see README.md "Switching to PostgreSQL for
+# production"). Not required for day-to-day development, which uses SQLite.
+#
+# Usage:
+#   docker compose up -d
+#   # then set DATABASE_URL="postgresql://sant_kabir:sant_kabir@localhost:5432/sant_kabir_db"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sant_kabir
+      POSTGRES_PASSWORD: sant_kabir
+      POSTGRES_DB: sant_kabir_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - sant_kabir_pg_data:/var/lib/postgresql/data
+
+volumes:
+  sant_kabir_pg_data:

@@ -1,0 +1,365 @@
+// Prisma schema for the Sant Kabir Ji / Maghar community website.
+//
+// Dev default: SQLite (file-based, zero external services, works out of the box).
+// Production target: PostgreSQL. See README.md "Switching to PostgreSQL for production"
+// for the two changes required (datasource provider + DATABASE_URL).
+//
+// NOTE: SQLite has no native enum type, so fields that would normally be Prisma
+// `enum`s are modeled as `String` with the allowed values documented in a comment
+// and enforced in application code via zod (see src/lib/validation.ts). This keeps
+// the schema portable to Postgres/MySQL without a migration rewrite later.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ---------------------------------------------------------------------------
+// Admin / CMS users & auth
+// ---------------------------------------------------------------------------
+
+/// role: SUPER_ADMIN | CONTENT_MANAGER | DONATION_MANAGER | EVENT_MANAGER
+model AdminUser {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("CONTENT_MANAGER")
+  active       Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions        AdminSession[]
+  events          Event[]
+  articles        Article[]
+  messages        Message[]
+  auditLogs       AuditLog[]
+
+  @@index([role])
+}
+
+model AdminSession {
+  id        String   @id @default(cuid())
+  userId    String
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      AdminUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String
+  entityId  String?
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+}
+
+// ---------------------------------------------------------------------------
+// Sant Kabir content: dohas (searchable couplet library)
+// ---------------------------------------------------------------------------
+
+/// theme: guru | prem | satya | ahankar | manavta | bhakti | karma | jaati | dharma | maya | atmagyan
+model Doha {
+  id             String   @id @default(cuid())
+  hindiText      String
+  meaningHindi   String
+  meaningEnglish String
+  theme          String
+  sortOrder      Int      @default(0)
+  published      Boolean  @default(true)
+  audioUrl       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([theme])
+  @@index([published])
+}
+
+// ---------------------------------------------------------------------------
+// Mahant Ji messages / pravachan
+// ---------------------------------------------------------------------------
+
+/// category: MESSAGE | PRAVACHAN | ANNOUNCEMENT
+model Message {
+  id          String   @id @default(cuid())
+  titleEn     String
+  titleHi     String
+  bodyEn      String
+  bodyHi      String
+  category    String   @default("MESSAGE")
+  coverImage  String?
+  videoUrl    String?
+  eventDate   DateTime?
+  featured    Boolean  @default(false)
+  published   Boolean  @default(false)
+  createdById String?
+  createdBy   AdminUser? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category, published])
+}
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+/// category: SATSANG | PRAVACHAN | GURU_PURNIMA | KABIR_JAYANTI | KABIR_MAHOTSAV |
+///           NIRVAN_DIWAS | BHANDARA | SAMAJIK_SEVA | ANTARDHARMIK_SADBHAV | OTHER
+model Event {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  titleEn          String
+  titleHi          String
+  descriptionEn    String
+  descriptionHi    String
+  category         String   @default("OTHER")
+  startDate        DateTime
+  endDate          DateTime?
+  venueEn          String?
+  venueHi          String?
+  bannerImage      String?
+  registrationUrl  String?
+  featured         Boolean  @default(false)
+  published        Boolean  @default(false)
+  isDemo           Boolean  @default(false)
+  seoTitle         String?
+  seoDescription   String?
+  createdById      String?
+  createdBy        AdminUser? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  media MediaAsset[]
+
+  @@index([startDate])
+  @@index([published, featured])
+}
+
+// ---------------------------------------------------------------------------
+// Gallery: photos & videos
+// ---------------------------------------------------------------------------
+
+/// type: IMAGE | VIDEO
+/// category: EVENTS | MAHANT_JI | MAGHAR | SANT_KABIR | GENERAL
+model MediaAsset {
+  id                 String   @id @default(cuid())
+  type               String
+  url                String
+  thumbnailUrl       String?
+  captionEn          String?
+  captionHi          String?
+  category           String   @default("GENERAL")
+  eventId            String?
+  event              Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  sourceUrl          String?
+  creator            String?
+  license             String?
+  attributionRequired Boolean @default(false)
+  attributionText    String?
+  published          Boolean  @default(true)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+
+  @@index([type, category, published])
+}
+
+/// category: SATSANG | PRAVACHAN | EVENT | MESSAGE
+model Video {
+  id           String   @id @default(cuid())
+  titleEn      String
+  titleHi      String
+  youtubeId    String
+  category     String   @default("SATSANG")
+  descriptionEn String?
+  descriptionHi String?
+  publishedAt  DateTime?
+  featured     Boolean  @default(false)
+  published    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([category, published])
+}
+
+// ---------------------------------------------------------------------------
+// News / Articles
+// ---------------------------------------------------------------------------
+
+model Article {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  titleEn        String
+  titleHi        String
+  excerptEn      String?
+  excerptHi      String?
+  bodyEn         String
+  bodyHi         String
+  coverImage     String?
+  published      Boolean  @default(false)
+  publishedAt    DateTime?
+  seoTitle       String?
+  seoDescription String?
+  authorId       String?
+  author         AdminUser? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([published, publishedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Donations
+// ---------------------------------------------------------------------------
+
+/// paymentStatus: CREATED | PENDING | SUCCESS | FAILED | REFUNDED
+/// paymentGateway: RAZORPAY
+model Donation {
+  id               String   @id @default(cuid())
+  donationId       String   @unique // human-readable e.g. SK-2026-000123
+  donorName        String
+  email            String
+  mobile           String
+  pan              String?
+  address          String?
+  amount           Int      // in paise (smallest currency unit) to avoid float errors
+  currency         String   @default("INR")
+  purposeId        String?
+  purpose          DonationPurpose? @relation(fields: [purposeId], references: [id], onDelete: SetNull)
+  isRecurring      Boolean  @default(false)
+  anonymous        Boolean  @default(false)
+  paymentGateway   String   @default("RAZORPAY")
+  gatewayOrderId   String?  @unique
+  gatewayPaymentId String?  @unique
+  gatewaySignature String?
+  paymentStatus    String   @default("CREATED")
+  receiptNumber    String?  @unique
+  notes            String?
+  ipAddress        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  webhookEvents WebhookEvent[]
+
+  @@index([paymentStatus])
+  @@index([email])
+  @@index([createdAt])
+}
+
+model DonationPurpose {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  labelEn   String
+  labelHi   String
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+
+  donations Donation[]
+}
+
+/// Records processed gateway webhook event IDs to guarantee idempotency
+/// (a webhook retried by the gateway must never be applied twice).
+model WebhookEvent {
+  id           String   @id @default(cuid())
+  gatewayEventId String @unique
+  donationId   String?
+  donation     Donation? @relation(fields: [donationId], references: [id], onDelete: SetNull)
+  eventType    String
+  payload      String
+  processedAt  DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Contact / Volunteer / Newsletter / Testimonials
+// ---------------------------------------------------------------------------
+
+/// type: GENERAL | VISIT | DONATION | VOLUNTEER
+/// status: NEW | IN_PROGRESS | RESOLVED
+model ContactEnquiry {
+  id        String   @id @default(cuid())
+  type      String   @default("GENERAL")
+  name      String
+  email     String
+  phone     String?
+  subject   String?
+  message   String
+  status    String   @default("NEW")
+  createdAt DateTime @default(now())
+}
+
+/// status: NEW | CONTACTED | ACTIVE | INACTIVE
+model VolunteerApplication {
+  id              String   @id @default(cuid())
+  name            String
+  mobile          String
+  email           String
+  city            String
+  areaOfInterest  String
+  availability    String?
+  message         String?
+  status          String   @default("NEW")
+  createdAt       DateTime @default(now())
+}
+
+/// status: ACTIVE | UNSUBSCRIBED
+model NewsletterSubscriber {
+  id                String   @id @default(cuid())
+  name              String?
+  email             String   @unique
+  consent           Boolean  @default(true)
+  status            String   @default("ACTIVE")
+  unsubscribeToken  String   @unique
+  subscribedAt      DateTime @default(now())
+  unsubscribedAt    DateTime?
+}
+
+model Testimonial {
+  id        String   @id @default(cuid())
+  name      String
+  roleEn    String?
+  roleHi    String?
+  messageEn String
+  messageHi String
+  published Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Site settings & SEO
+// ---------------------------------------------------------------------------
+
+/// Flexible key-value store for editable, non-secret organisational settings
+/// (name, address, phone, social links, map embed, SEO defaults, footer text,
+/// tax/registration display fields, donation purpose defaults, etc).
+/// Secrets (API keys, webhook secrets) are NEVER stored here — see .env.example.
+model SiteSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model PageSeo {
+  id              String   @id @default(cuid())
+  path            String   @unique
+  titleEn         String?
+  titleHi         String?
+  descriptionEn   String?
+  descriptionHi   String?
+  ogImage         String?
+  updatedAt       DateTime @updatedAt
+}
